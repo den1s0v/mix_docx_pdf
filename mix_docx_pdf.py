@@ -105,7 +105,7 @@ def find_files(config: dict={}):
 
 
 	if not common:
-		return
+		return ()
 
 	sort_key = lambda p: p.stem
 	docx_files = sorted((fp for fp in docx_src_files if fp.stem in common), key=sort_key)
