@@ -1,6 +1,7 @@
 # mix_docx_pdf
 
 # from glob import glob
+import os
 from pathlib import Path
 from time import localtime, strftime
 
@@ -16,6 +17,9 @@ import yaml
 
 ERRORS_FILE = "Ошибки.txt"
 WARNINGS_FILE = "Предупреждения.txt"
+CONFIG_FILE = "mix_config.yml"
+
+WIN_LONG_PATH_PREFIX = '\\\\?\\'  # \\?\  - специальный префикс для использования длинных путей в Windows
 
 
 class jsObj(dict):
@@ -40,14 +44,30 @@ def cut_dir_ext(*paths):
 	return [p.stem for p in paths]
 
 
+# How to use special prefix with pathlib:  https://stackoverflow.com/questions/55815617/pathlib-path-rglob-fails-on-long-file-paths-in-windows
+def longpath(path):
+    normalized = os.fspath(Path(path).resolve())
+    if not normalized.startswith(WIN_LONG_PATH_PREFIX):
+        normalized = WIN_LONG_PATH_PREFIX + normalized
+    return Path(normalized)
+
+
+def strip_path_prefix(p:Path or str) -> str:
+	p = str(p)
+	if p.startswith(WIN_LONG_PATH_PREFIX):
+		p = p[len(WIN_LONG_PATH_PREFIX):]
+	return p
+
+
 def create_dir(p:Path or str) -> Path:
-	p = Path(p)
+	p = Path(longpath(p))
 	p.mkdir(parents=True, exist_ok=True)
 	return p
 
 
 
 def _log(*args):
+	'_log(text, [iteration, total, ] progress_callback)'
 	progress_callback = args[-1]
 	args = args[:-1]
 	if args and progress_callback:
@@ -65,17 +85,17 @@ def find_files(config: dict={}):
 
 	docx_src_dir = config.docx_src_dir  # or None
 	pdf_src_dir  = config.pdf_src_dir   # or None
-	log_dir  = create_dir(config.log_dir )
+	log_dir  = create_dir(config.log_dir)
 
 
 	if not docx_src_files and docx_src_dir:
 		log("Читаю файлы ...")
-		docx_src_files = listdir(docx_src_dir, '*.docx')
+		docx_src_files = listdir(longpath(docx_src_dir), '*.docx')
 		log("%d файлов DOCX." % len(docx_src_files))
 
 	if not pdf_src_files and pdf_src_dir:
 		log("Читаю файлы ...")
-		pdf_src_files = listdir(pdf_src_dir, '*.pdf')
+		pdf_src_files = listdir(longpath(pdf_src_dir), '*.pdf')
 		log("%d файлов PDF." % len(pdf_src_files))
 
 
@@ -92,7 +112,7 @@ def find_files(config: dict={}):
 	if only_docx:
 		p = log_dir / 'DOCX_без_пары.txt'
 		p.write_text('\n'.join(sorted(only_docx)))
-		log("	Список сохранён в: " + str(p))
+		log("	Список сохранён в: " + strip_path_prefix(p))
 
 
 	only_pdf = pdf_set - docx_set
@@ -101,7 +121,7 @@ def find_files(config: dict={}):
 	if only_pdf:
 		p = log_dir / 'PDF_без_пары.txt'
 		p.write_text('\n'.join(sorted(only_pdf)))
-		log("	Список сохранён в: " + str(p))
+		log("	Список сохранён в: " + strip_path_prefix(p))
 
 
 	if not common:
@@ -156,8 +176,9 @@ def process_docx_pdf(config: dict={}):
 				log('Советы:')
 				log(' 1. Убедитесь, что Microsoft Word установлен и работает нормально.')
 				log(' 2. Закройте все обрабатываемые документы, если они открыты в Word.')
-				log(' 3. Не работайте с Word, пока идёт обработка документов.')
-				log_error_to_file("Не получилось сконвертировать DOCX в PDF с помощью MS WORD: %s" % str(pair.docx) + '\n\t\t' + e.__class__.__name__ + ':\t' + str(e), log_dir)
+				log(' 3. Разместите файлы DOCX по более короткому пути (напр., ближе к диску C:\\).')
+				log(' 4. Не работайте с Word, пока идёт обработка документов.')
+				log_error_to_file("Не получилось сконвертировать DOCX в PDF с помощью MS WORD: %s" % strip_path_prefix(pair.docx) + '\n\t\t' + e.__class__.__name__ + ':\t' + str(e), log_dir)
 				if config.stop_on_error:
 					break
 				continue
@@ -167,7 +188,7 @@ def process_docx_pdf(config: dict={}):
 			log("Не получилось сконвертировать DOCX в PDF: %s" % name)
 			if config.stop_on_error:
 				log('Попробуйте ещё раз.')
-				log_error_to_file("Не получилось сконвертировать DOCX в PDF с помощью MS WORD: %s" % str(pair.docx), log_dir)
+				log_error_to_file("Не получилось сконвертировать DOCX в PDF с помощью MS WORD: %s" % strip_path_prefix(pair.docx), log_dir)
 				break
 			continue
 
@@ -196,12 +217,12 @@ def open_pdf_Document(path, log=None, log_dir=Path('.')):
 		return document
 	except Exception as e:
 		log('ERROR')
-		log('Ошибка при чтении файла: %s' % str(path))
+		log('Ошибка при чтении файла: %s' % strip_path_prefix(path))
 		# log('\t' + e.__class__.__name__)
 		# log('\t' + str(e))
 		log('Совет:')
 		log(' - Если это файл открыт в другом приложении, закройте его.')
-		log_error_to_file('Ошибка при чтении файла PDF: '+str(path)+'\n\t\t' + e.__class__.__name__ + ':\t' + str(e), log_dir)
+		log_error_to_file('Ошибка при чтении файла PDF: '+strip_path_prefix(path)+'\n\t\t' + e.__class__.__name__ + ':\t' + str(e), log_dir)
 		raise e
 
 
@@ -267,7 +288,7 @@ def mix_pdfs(pdf_from_docx, pdf_from_pdf, result_pdf_path, log, config):
 		log('\t' + str(e))
 		log('Пожалуйста, проверьте, что этот файл нигде не открыт (для просмотра):')
 		log('\t' + str(result_pdf_path))
-		log_error_to_file('Проблемы с записью итогового PDF на диск: ' +str(result_pdf_path), create_dir(config.log_dir))
+		log_error_to_file('Проблемы с записью итогового PDF на диск: ' +strip_path_prefix(result_pdf_path), create_dir(config.log_dir))
 		return False
 
 	return True
@@ -280,11 +301,12 @@ def read_yml(file_path):
 		return data
 	except Exception as e:
 		print('ERROR')
-		print('НЕ МОГУ ПРОЧИТАТЬ ФАЙЛ КОНФИГУРАЦИИ.')
+		print('НЕ МОГУ ПРОЧИТАТЬ ФАЙЛ КОНФИГУРАЦИИ:')
 		print('\t' + e.__class__.__name__)
 		print('\t' + str(e))
 		print('Файл конфигурации должен находиться здесь:')
-		print("\t", file_path)
+		print("\t" + file_path)
+		print("\tАбсолютный путь:  ",Path(file_path).absolute())
 		exit(2)
 
 
@@ -311,8 +333,8 @@ def log_warning_to_file(msg:str, dir_path:Path):
 
 
 
-def main():
-	config = read_yml('mix_config.yml')
+def main(config_file_path=CONFIG_FILE):
+	config = read_yml(config_file_path)
 	config['progress_callback'] = console_progress
 
 	try:
