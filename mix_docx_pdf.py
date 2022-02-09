@@ -132,6 +132,7 @@ def process_docx_pdf(config: dict={}):
 
 	tasks_total = len(config.document_pairs)
 
+	i = -1  # счётчик может быть не инициализирован циклом
 	for i, pair in enumerate(config.document_pairs):
 		name = pair.pdf.stem
 		result_pdf_path = result_dir / pair.pdf.name
@@ -185,7 +186,7 @@ def process_docx_pdf(config: dict={}):
 			break
 
 	log("      ======")
-	log("Завершено.")
+	log("Завершено (сделано попыток обработать файлы: %d)." % (i + 1))
 
 
 def open_pdf_Document(path, log=None, log_dir=Path('.')):
